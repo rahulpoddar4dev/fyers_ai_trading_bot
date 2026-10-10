@@ -1,0 +1,258 @@
+# risk_manager.py - Daily trading guardrails
+
+import csv
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+import config
+from account_status import load_account_status
+from market_time import market_now_naive, today_date
+from paper_account import get_paper_balance
+from position_sizer import calculate_fund_usage_limit
+
+
+HISTORY_FILE = Path("logs") / "trade_history.csv"
+
+
+def _current_dashboard_balance() -> float:
+    if config.PAPER_TRADE or config.TRADING_MODE == "PAPER":
+        return get_paper_balance()
+
+    status = load_account_status()
+    return float(status.get("broker_balance") or status.get("available_balance") or config.PAPER_BALANCE_OVERRIDE or 0)
+
+
+def _dynamic_daily_loss_limit(balance: float) -> float:
+    if config.MAX_DAILY_LOSS and config.MAX_DAILY_LOSS > 0:
+        return float(config.MAX_DAILY_LOSS)
+    percent = getattr(config, "MAX_DAILY_LOSS_PERCENT_OF_FUND", 20)
+    return float(balance) * (percent / 100)
+
+
+def _dynamic_daily_profit_target(balance: float) -> float:
+    if config.MAX_DAILY_PROFIT and config.MAX_DAILY_PROFIT > 0:
+        return float(config.MAX_DAILY_PROFIT)
+    percent = getattr(config, "MAX_DAILY_PROFIT_PERCENT_OF_FUND", 10)
+    if percent and percent > 0:
+        return float(balance) * (percent / 100)
+    return 0.0
+
+
+def _switch_to_paper_after_daily_loss() -> bool:
+    if config.TRADING_MODE == "PAPER" or config.PAPER_TRADE:
+        return False
+
+    try:
+        from runtime_settings import save_trading_mode
+
+        save_trading_mode("PAPER")
+        config.TRADING_MODE = "PAPER"
+        config.PAPER_TRADE = True
+        config.ENABLE_LIVE_AUTO = False
+        return True
+    except Exception:
+        return False
+
+
+def build_daily_risk_summary(day: str | None = None) -> dict:
+    day = day or today_date().isoformat()
+    entries = 0
+    exits = 0
+    failed = 0
+    stop_losses = 0
+    pnl = 0.0
+
+    if HISTORY_FILE.exists():
+        with HISTORY_FILE.open() as csv_file:
+            for row in csv.DictReader(csv_file):
+                if row.get("date") != day:
+                    continue
+                row_mode = (row.get("mode") or "").upper()
+                if config.TRADING_MODE == "PAPER":
+                    if row_mode not in {"", "PAPER"}:
+                        continue
+                elif row_mode != config.TRADING_MODE:
+                    continue
+
+                if row.get("event") == "ENTRY":
+                    entries += 1
+                elif row.get("event") == "EXIT":
+                    exits += 1
+                    row_pnl = float(row.get("pnl") or 0)
+                    pnl += row_pnl
+                    if row_pnl < 0:
+                        failed += 1
+                    reason = row.get("reason") or ""
+                    stop_loss_reasons = {
+                        "STOP_LOSS_HIT",
+                        "DYNAMIC_SAFE_SL_HIT",
+                        "DYNAMIC_SOFT_LOSS_EXIT",
+                        "DYNAMIC_EARLY_LOSS_EXIT",
+                    }
+                    if reason in stop_loss_reasons and row_pnl < 0:
+                        stop_losses += 1
+
+    if entries == 0 and exits == 0:
+        try:
+            from database import db_get_trades_for_date
+            mode = config.TRADING_MODE
+            db_trades = db_get_trades_for_date(day, "PAPER" if mode in {"", "PAPER"} else mode)
+            for row in db_trades:
+                entries += 1
+                if row.get("status") == "CLOSED":
+                    exits += 1
+                    row_pnl = float(row.get("pnl") or 0)
+                    pnl += row_pnl
+                    if row_pnl < 0:
+                        failed += 1
+                    reason = str(row.get("exit_reason") or "").upper()
+                    if ("SL" in reason or "LOSS" in reason or "STOP" in reason) and row_pnl < 0:
+                        stop_losses += 1
+        except Exception:
+            pass
+
+    return {
+        "date": day,
+        "entries": entries,
+        "exits": exits,
+        "failed": failed,
+        "stop_losses": stop_losses,
+        "pnl": round(pnl, 2),
+    }
+
+
+def check_same_underlying_sl_cooldown(option_trade: dict, signal: dict | None = None) -> tuple[bool, str]:
+    cooldown_minutes = int(getattr(config, "SAME_UNDERLYING_SL_COOLDOWN_MINUTES", 0) or 0)
+    flip_cooldown_minutes = int(getattr(config, "OPPOSITE_DIRECTION_FLIP_COOLDOWN_MINUTES", 10) or 10)
+    if cooldown_minutes <= 0 and flip_cooldown_minutes <= 0:
+        return True, "SL cooldown disabled."
+
+    underlying = option_trade.get("underlying")
+    option_type = option_trade.get("option_type")
+    from market_time import market_now_naive, today_date
+    now = market_now_naive()
+    same_cutoff = now - timedelta(minutes=cooldown_minutes) if cooldown_minutes > 0 else now
+    flip_cutoff = now - timedelta(minutes=flip_cooldown_minutes) if flip_cooldown_minutes > 0 else now
+    current_date = today_date().isoformat()
+    latest_same_exit_time = None
+    latest_opposite_exit_time = None
+
+    def _process_row(row_underlying, row_type, row_pnl, row_reason, closed_at_str):
+        nonlocal latest_same_exit_time, latest_opposite_exit_time
+        if row_underlying != underlying:
+            return
+        if float(row_pnl or 0) >= 0:
+            return
+        reason_upper = str(row_reason or "").upper()
+        if not ("SL" in reason_upper or "LOSS" in reason_upper or "STOP" in reason_upper):
+            return
+        try:
+            exit_time = datetime.fromisoformat(closed_at_str)
+            if exit_time.tzinfo is not None:
+                exit_time = exit_time.replace(tzinfo=None)
+        except (TypeError, ValueError):
+            return
+
+        if row_type == option_type:
+            if latest_same_exit_time is None or exit_time > latest_same_exit_time:
+                latest_same_exit_time = exit_time
+        elif row_type:
+            if latest_opposite_exit_time is None or exit_time > latest_opposite_exit_time:
+                latest_opposite_exit_time = exit_time
+
+    if HISTORY_FILE.exists():
+        with HISTORY_FILE.open() as csv_file:
+            for row in csv.DictReader(csv_file):
+                if row.get("date") != current_date or row.get("event") != "EXIT":
+                    continue
+                _process_row(
+                    row.get("underlying"),
+                    row.get("option_type"),
+                    row.get("pnl"),
+                    row.get("reason"),
+                    row.get("closed_at") or row.get("event_time"),
+                )
+
+    # Also check database for today's trades
+    try:
+        from database import db_get_trades_for_date
+        db_trades = db_get_trades_for_date(current_date)
+        for row in db_trades:
+            if row.get("status") != "CLOSED":
+                continue
+            _process_row(
+                row.get("underlying"),
+                row.get("option_type"),
+                row.get("pnl"),
+                row.get("exit_reason"),
+                row.get("closed_at") or row.get("event_time"),
+            )
+    except Exception:
+        pass
+
+    if latest_same_exit_time and cooldown_minutes > 0 and latest_same_exit_time >= same_cutoff:
+        wait_until = latest_same_exit_time + timedelta(minutes=cooldown_minutes)
+        return False, (
+            f"Same {underlying} {option_type} re-entry blocked after negative SL. "
+            f"Cooldown ends at {wait_until.strftime('%H:%M:%S')}."
+        )
+
+    if latest_opposite_exit_time and flip_cooldown_minutes > 0 and latest_opposite_exit_time >= flip_cutoff:
+        if getattr(config, "DYNAMIC_FLIP_VALIDATION_ENABLED", True) and signal:
+            quality_score = float(signal.get("TRADE_QUALITY_SCORE") or 0)
+            setup_score = float(signal.get("SETUP_SCORE") or 0)
+            confidence = float(option_trade.get("confidence_score") or 0)
+            alignment = signal.get("INDEX_ALIGNMENT")
+            if (quality_score >= 12 or confidence >= 70 or setup_score >= 14) and alignment in ("BULLISH", "BEARISH"):
+                return True, (
+                    f"Structural trend reversal confirmed: Opposite SL cooldown bypassed due to strong breakout "
+                    f"(Quality {quality_score}, Setup {setup_score}, Alignment {alignment})."
+                )
+
+        wait_until = latest_opposite_exit_time + timedelta(minutes=flip_cooldown_minutes)
+        return False, (
+            f"Flip-flop re-entry on {underlying} {option_type} blocked after recent opposite SL "
+            f"without structural breakout confirmation. Cooldown ends at {wait_until.strftime('%H:%M:%S')}."
+        )
+
+    return True, "No recent same-underlying negative SL."
+
+
+def check_daily_risk_allowed() -> tuple[bool, str, dict]:
+    summary = build_daily_risk_summary()
+    balance = _current_dashboard_balance()
+    daily_loss_limit = _dynamic_daily_loss_limit(balance)
+    daily_profit_target = _dynamic_daily_profit_target(balance)
+    summary["daily_loss_limit"] = round(daily_loss_limit, 2)
+    summary["daily_profit_target"] = round(daily_profit_target, 2)
+    summary["fund_usage_limit"] = round(calculate_fund_usage_limit(balance), 2)
+
+    if config.MAX_DAILY_TRADES and summary["entries"] >= config.MAX_DAILY_TRADES:
+        return False, f"Daily trade limit reached: {summary['entries']}/{config.MAX_DAILY_TRADES}.", summary
+
+    if config.MAX_DAILY_STOP_LOSSES and summary["stop_losses"] >= config.MAX_DAILY_STOP_LOSSES:
+        return False, (
+            f"Daily stop-loss limit reached: "
+            f"{summary['stop_losses']}/{config.MAX_DAILY_STOP_LOSSES}."
+        ), summary
+
+    if config.MAX_DAILY_FAILED_TRADES and summary["failed"] >= config.MAX_DAILY_FAILED_TRADES:
+        return False, f"Daily failed-trade limit reached: {summary['failed']}/{config.MAX_DAILY_FAILED_TRADES}.", summary
+
+    if summary["pnl"] <= -abs(daily_loss_limit):
+        switched_to_paper = _switch_to_paper_after_daily_loss()
+        summary["switched_to_paper"] = switched_to_paper
+        action = " Switched to PAPER mode automatically." if switched_to_paper else ""
+        return False, (
+            f"Daily net loss limit reached: Rs {summary['pnl']} <= -Rs {round(daily_loss_limit, 2)} "
+            f"({getattr(config, 'MAX_DAILY_LOSS_PERCENT_OF_FUND', 20)}% of fund).{action}"
+        ), summary
+
+    if daily_profit_target > 0 and summary["pnl"] >= daily_profit_target:
+        percent = getattr(config, "MAX_DAILY_PROFIT_PERCENT_OF_FUND", 10)
+        return False, (
+            f"Daily profit target reached: Rs {summary['pnl']} >= Rs {round(daily_profit_target, 2)} "
+            f"({percent}% of fund). Trading halted to lock and protect today's profit!"
+        ), summary
+
+    return True, "Daily risk checks passed.", summary
