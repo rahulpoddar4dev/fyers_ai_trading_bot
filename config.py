@@ -21,20 +21,26 @@ def _load_env_file(path: str = ".env") -> None:
 
 _load_env_file()
 
-KITE_API_KEY = os.getenv("KITE_API_KEY", "")        # From kite.trade
-KITE_API_SECRET = os.getenv("KITE_API_SECRET", "") # From kite.trade
-KITE_REQUEST_TIMEOUT = 15                 # Seconds to wait for Kite API response
-KITE_LOGIN_RETRIES = 3                    # Retry temporary Kite/network timeout during login
-KITE_LOGIN_RETRY_SLEEP = 5                # Seconds between login retries
-KITE_AUTO_LOGIN = True                    # Capture request_token automatically via local callback
+FYERS_CLIENT_ID = os.getenv("FYERS_CLIENT_ID", "")                     # Loaded from .env (myapi.fyers.in)
+FYERS_SECRET_KEY = os.getenv("FYERS_SECRET_KEY", "")                   # Loaded from .env (myapi.fyers.in)
+FYERS_ACCESS_TOKEN = os.getenv("FYERS_ACCESS_TOKEN", "")               # Optional pre-generated access token
+BROKER_PROVIDER = os.getenv("BROKER_PROVIDER", "FYERS").upper()
+FYERS_REQUEST_TIMEOUT = 15                 # Seconds to wait for Fyers API response
+FYERS_LOGIN_RETRIES = 3                    # Retry temporary Fyers/network timeout during login
+FYERS_LOGIN_RETRY_SLEEP = 5                # Seconds between login retries
+FYERS_AUTO_LOGIN = True                    # Open Fyers login and capture auth_code
 PUBLIC_URL = (os.getenv("RENDER_EXTERNAL_URL") or os.getenv("PUBLIC_URL") or os.getenv("DASHBOARD_PUBLIC_URL") or "").rstrip("/")
-KITE_CALLBACK_HOST = os.getenv("KITE_CALLBACK_HOST", "0.0.0.0" if (os.getenv("PORT") or os.getenv("RENDER")) else "127.0.0.1") # Bind host for local/server callback
-KITE_CALLBACK_PUBLIC_HOST = os.getenv("KITE_CALLBACK_PUBLIC_HOST", KITE_CALLBACK_HOST)
-KITE_CALLBACK_PORT = int(os.getenv("KITE_CALLBACK_PORT", "8085"))
-KITE_CALLBACK_PATH = "/callback"
-KITE_CALLBACK_TIMEOUT_SECONDS = int(os.getenv("KITE_CALLBACK_TIMEOUT_SECONDS", "180")) # Time allowed to complete browser login
-KITE_READ_BROWSER_URL_FALLBACK = True     # macOS Chrome fallback when redirect URL is still http://127.0.0.1
-KITE_BROWSER_APP = "Google Chrome"
+FYERS_CALLBACK_HOST = os.getenv("FYERS_CALLBACK_HOST", "0.0.0.0" if (os.getenv("PORT") or os.getenv("RENDER")) else "127.0.0.1")
+FYERS_CALLBACK_PUBLIC_HOST = os.getenv("FYERS_CALLBACK_PUBLIC_HOST", FYERS_CALLBACK_HOST)
+FYERS_CALLBACK_PORT = int(os.getenv("FYERS_CALLBACK_PORT", "8085"))
+FYERS_CALLBACK_PATH = "/callback"
+FYERS_REDIRECT_URI = os.getenv(
+    "FYERS_REDIRECT_URI",
+    "https://trade.fyers.in/api-login/redirect-uri/index.html",
+)
+FYERS_CALLBACK_TIMEOUT_SECONDS = int(os.getenv("FYERS_CALLBACK_TIMEOUT_SECONDS", "180")) # Time allowed to complete browser login
+FYERS_READ_BROWSER_URL_FALLBACK = True     # Browser URL fallback
+FYERS_BROWSER_APP = "Google Chrome"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")     # From https://platform.openai.com/api-keys
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")    # Override in Render env if you want a cheaper/faster model
 PAPER_TRADE = True                        # True means no real orders will be placed

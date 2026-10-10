@@ -9,7 +9,7 @@ from dashboard import start_dashboard_background
 from decision_engine import build_final_decision
 from drive_sync import start_csv_drive_sync_background
 from execution_manager import execute_trade
-from kite_login import login
+from fyers_login import login
 from learning_manager import apply_learning_adjustments
 from log_utils import log
 from market_comparator import analyze_index, choose_safe_market
@@ -42,9 +42,9 @@ from trade_state import load_open_trades, monitor_open_trades, square_off_open_t
 from trade_explainer import build_trade_explanation, print_trade_explanation
 import config
 
-def check_balance_or_exit(kite):
-    kite_balance = get_balance(kite)
-    balance = kite_balance
+def check_balance_or_exit(fyers):
+    fyers_balance = get_balance(fyers)
+    balance = fyers_balance
     paper_balance = None
     if (config.PAPER_TRADE or config.TRADING_MODE == "PAPER") and config.PAPER_BALANCE_OVERRIDE:
         paper_balance = get_paper_balance()
@@ -52,11 +52,11 @@ def check_balance_or_exit(kite):
 
     profile = None
     try:
-        profile = kite.profile()
+        profile = fyers.profile()
     except Exception:
         profile = None
     save_account_status(
-        kite_balance,
+        fyers_balance,
         profile,
         active_balance=balance,
         paper_balance=paper_balance,
@@ -66,7 +66,7 @@ def check_balance_or_exit(kite):
     if config.MAX_TRADE_AMOUNT and balance < config.MAX_TRADE_AMOUNT:
         if config.PAPER_TRADE or config.TRADING_MODE == "PAPER":
             table("BALANCE CHECK", [
-                ("Kite Balance", f"Rs {kite_balance}"),
+                ("Fyers Balance", f"Rs {fyers_balance}"),
                 ("Paper Balance Used", f"Rs {balance}"),
                 ("MAX_TRADE_AMOUNT", f"Rs {config.MAX_TRADE_AMOUNT}"),
                 ("Mode", config.TRADING_MODE),
@@ -664,11 +664,11 @@ def additional_trade_check(open_trades: list[dict], option_trade: dict, news: di
     return True, "Second trade allowed: existing trade is risk-free, direction matches, and combined risk is within limits."
 
 
-def analyze_once(kite, balance, allow_fresh_analysis: bool = True):
+def analyze_once(fyers, balance, allow_fresh_analysis: bool = True):
     apply_runtime_settings(config)
 
     try:
-        update_ghost_trades(kite)
+        update_ghost_trades(fyers)
     except Exception as error:
         log(f"Ghost tracker update skipped: {error}")
 
@@ -679,11 +679,11 @@ def analyze_once(kite, balance, allow_fresh_analysis: bool = True):
     if open_trades:
         if is_square_off_time():
             section("MANDATORY SQUARE OFF")
-            square_off_open_trade(kite, reason="MARKET_CLOSE_SQUARE_OFF")
+            square_off_open_trade(fyers, reason="MARKET_CLOSE_SQUARE_OFF")
             return
 
         section("OPEN TRADE CHECK")
-        monitor_open_trades(kite)
+        monitor_open_trades(fyers)
         open_trades = load_open_trades()
         if open_trades and not allow_fresh_analysis:
             return
@@ -710,7 +710,7 @@ def analyze_once(kite, balance, allow_fresh_analysis: bool = True):
     pre_open_context = {}
     if is_pre_open_reference_window():
         try:
-            pre_open_context = analyze_pre_open_market(kite)
+            pre_open_context = analyze_pre_open_market(fyers)
         except Exception as error:
             pre_open_context = {
                 "overall_bias": "UNKNOWN",
@@ -758,7 +758,7 @@ def analyze_once(kite, balance, allow_fresh_analysis: bool = True):
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         news_future = executor.submit(analyze_news)
         index_futures = {
-            executor.submit(analyze_index, kite, symbol): symbol
+            executor.submit(analyze_index, fyers, symbol): symbol
             for symbol in config.ANALYZE_INDICES
         }
 
@@ -856,7 +856,7 @@ def analyze_once(kite, balance, allow_fresh_analysis: bool = True):
 
     try:
         market_context = analyze_market_context(
-            kite,
+            fyers,
             selected_symbol=market_data.get("symbol"),
             spot_price=market_data.get("last_price"),
             news=news,
@@ -1011,7 +1011,7 @@ def analyze_once(kite, balance, allow_fresh_analysis: bool = True):
     # Step 5: Act on signal (PAPER TRADE MODE - no real orders yet!)
     section("TRADE DECISION")
     option_trade = analyze_option_chain_for_trade(
-        kite,
+        fyers,
         market_data["symbol"],
         signal.get("SIGNAL"),
         market_data["last_price"],
@@ -1265,7 +1265,7 @@ def analyze_once(kite, balance, allow_fresh_analysis: bool = True):
                 ("Order Action", option_trade.get("order_action")),
                 ("Confidence", signal.get("CONFIDENCE")),
                 ("Option", option_trade.get("display_symbol", option_trade["option_symbol"])),
-            ("Kite Symbol", option_trade["option_symbol"]),
+            ("Fyers Symbol", option_trade["option_symbol"]),
             ("Selection", option_trade.get("selection_mode")),
             ("Regime Sizing", option_trade.get("regime_sizing_mode", "NORMAL_BALANCED")),
             ("Entry", f"Rs {option_trade['entry_price']}"),
@@ -1286,9 +1286,9 @@ def analyze_once(kite, balance, allow_fresh_analysis: bool = True):
         if config.TRADING_MODE == "PAPER" or config.PAPER_TRADE:
             print("\nPAPER TRADE MODE: No real order placed")
         record_paper_trade(market_data, signal, option_trade, explanation)
-        execute_trade(kite, option_trade, signal, balance)
+        execute_trade(fyers, option_trade, signal, balance)
         # Uncomment below when ready to go live:
-        # place_order(kite, "NIFTY24JAN22500CE", "BUY", 50)
+        # place_order(fyers, "NIFTY24JAN22500CE", "BUY", 50)
 
     elif signal.get('SIGNAL') == 'SELL':
         if int(option_trade.get("quantity") or 0) <= 0:
@@ -1307,7 +1307,7 @@ def analyze_once(kite, balance, allow_fresh_analysis: bool = True):
                 ("Order Action", option_trade.get("order_action")),
                 ("Confidence", signal.get("CONFIDENCE")),
                 ("Option", option_trade.get("display_symbol", option_trade["option_symbol"])),
-                ("Kite Symbol", option_trade["option_symbol"]),
+                ("Fyers Symbol", option_trade["option_symbol"]),
             ("Selection", option_trade.get("selection_mode")),
             ("Entry", f"Rs {option_trade['entry_price']}"),
             ("Lot Size", option_trade.get("lot_size")),
@@ -1327,7 +1327,7 @@ def analyze_once(kite, balance, allow_fresh_analysis: bool = True):
         if config.TRADING_MODE == "PAPER" or config.PAPER_TRADE:
             print("\nPAPER TRADE MODE: No real order placed")
         record_paper_trade(market_data, signal, option_trade, explanation)
-        execute_trade(kite, option_trade, signal, balance)
+        execute_trade(fyers, option_trade, signal, balance)
 
     else:
         table("HOLD DECISION", [
@@ -1369,26 +1369,26 @@ def run_bot():
             ("Move After Upload", config.GOOGLE_DRIVE_SYNC_MOVE_AFTER_UPLOAD),
         ])
 
-    # Step 1: Login to Zerodha
+    # Step 1: Login to Fyers
     while True:
         try:
-            kite = login(dashboard_url=dashboard_url)
+            fyers = login(dashboard_url=dashboard_url)
             break
         except (ConnectionError, Timeout, ConnectionResetError, TimeoutError) as error:
-            log(f"Kite login/profile network issue: {error}")
-            log(f"Retrying login in {config.KITE_LOGIN_RETRY_SLEEP} seconds.")
-            time.sleep(config.KITE_LOGIN_RETRY_SLEEP)
+            log(f"Fyers login/profile network issue: {error}")
+            log(f"Retrying login in {config.FYERS_LOGIN_RETRY_SLEEP} seconds.")
+            time.sleep(config.FYERS_LOGIN_RETRY_SLEEP)
         except KeyboardInterrupt:
             log("Bot stopped by user.")
             return
 
     # Step 2: Check balance
-    balance = check_balance_or_exit(kite)
+    balance = check_balance_or_exit(fyers)
     if balance is None:
         return
 
     if not config.RUN_CONTINUOUSLY:
-        analyze_once(kite, balance)
+        analyze_once(fyers, balance)
         return
 
     print("\nContinuous analysis mode is ON.")
@@ -1403,7 +1403,7 @@ def run_bot():
             has_open_trade = bool(load_open_trades())
             now = time.monotonic()
             allow_fresh_analysis = (not has_open_trade) or (now - last_fresh_analysis_at >= config.ANALYSIS_INTERVAL_SECONDS)
-            analyze_once(kite, balance, allow_fresh_analysis=allow_fresh_analysis)
+            analyze_once(fyers, balance, allow_fresh_analysis=allow_fresh_analysis)
             if allow_fresh_analysis:
                 last_fresh_analysis_at = now
 
@@ -1415,7 +1415,7 @@ def run_bot():
                 log("No open trade. Waiting for next fresh analysis...")
             time.sleep(sleep_seconds)
         except (ConnectionError, Timeout, ConnectionResetError) as error:
-            log(f"Network/Kite connection issue: {error}")
+            log(f"Network/Fyers connection issue: {error}")
             log("Bot will retry on the next analysis cycle.")
             time.sleep(config.OPEN_TRADE_MONITOR_INTERVAL_SECONDS if load_open_trades() else config.ANALYSIS_INTERVAL_SECONDS)
         except KeyboardInterrupt:

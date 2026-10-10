@@ -50,9 +50,9 @@ def _risk_from_score(score: float, components: list[dict]) -> str:
     return "LOW"
 
 
-def _quote_component(kite, key: str, name: str, bullish_min: float, bearish_max: float) -> dict:
+def _quote_component(fyers, key: str, name: str, bullish_min: float, bearish_max: float) -> dict:
     try:
-        quote = kite.quote([key])[key]
+        quote = fyers.quote([key])[key]
         change = _quote_change_percent(quote)
     except Exception as error:
         return _component(name, "UNAVAILABLE", "NEUTRAL", 0, f"{name} quote unavailable: {error}")
@@ -64,9 +64,9 @@ def _quote_component(kite, key: str, name: str, bullish_min: float, bearish_max:
     return _component(name, "OK", "NEUTRAL", 0, f"{name} flat/mixed {change}%.", {"change_percent": change})
 
 
-def _india_vix_component(kite) -> dict:
+def _india_vix_component(fyers) -> dict:
     try:
-        quote = kite.quote(["NSE:INDIA VIX"])["NSE:INDIA VIX"]
+        quote = fyers.quote(["NSE:INDIA VIX"])["NSE:INDIA VIX"]
         vix = float(quote.get("last_price") or 0)
         change = _quote_change_percent(quote)
     except Exception as error:
@@ -101,12 +101,12 @@ def _india_vix_component(kite) -> dict:
     return _component("India VIX", "OK", "NEUTRAL", 0, f"VIX normal at {vix}.", {"vix": vix, "change_percent": change})
 
 
-def _support_indices_component(kite) -> dict:
+def _support_indices_component(fyers) -> dict:
     rows = []
     score = 0
     for name, key in config.MARKET_CONTEXT_SUPPORT_INDICES.items():
         try:
-            quote = kite.quote([key])[key]
+            quote = fyers.quote([key])[key]
             change = _quote_change_percent(quote)
             rows.append({"name": name, "key": key, "change_percent": change})
             if change >= config.MARKET_CONTEXT_SUPPORT_INDEX_CHANGE_MIN:
@@ -125,10 +125,10 @@ def _support_indices_component(kite) -> dict:
     return _component("Bank/Fin Nifty", "OK", bias, score, f"Support indices avg change {avg_change}%.", {"indices": rows, "avg_change_percent": avg_change})
 
 
-def _top_stock_breadth_component(kite) -> dict:
+def _top_stock_breadth_component(fyers) -> dict:
     keys = list(config.MARKET_CONTEXT_TOP_STOCKS)
     try:
-        quotes = kite.quote(keys)
+        quotes = fyers.quote(keys)
     except Exception as error:
         return _component("Top Index Stocks", "UNAVAILABLE", "NEUTRAL", 0, f"Top stock quotes unavailable: {error}")
 
@@ -154,9 +154,9 @@ def _top_stock_breadth_component(kite) -> dict:
     return _component("Top Index Stocks", "OK", "MIXED", 0, f"Top-stock breadth mixed: {advance_percent}% advancing.", {"stocks": rows, "advance_percent": advance_percent, "decline_percent": decline_percent})
 
 
-def _cached_instruments(kite, exchange: str) -> list[dict]:
+def _cached_instruments(fyers, exchange: str) -> list[dict]:
     if exchange not in _INSTRUMENT_CACHE:
-        _INSTRUMENT_CACHE[exchange] = kite.instruments(exchange)
+        _INSTRUMENT_CACHE[exchange] = fyers.instruments(exchange)
     return _INSTRUMENT_CACHE[exchange]
 
 
@@ -171,7 +171,7 @@ def _as_date(value) -> date | None:
     return None
 
 
-def _nearest_option_chain_component(kite, index_symbol: str | None, spot_price: float | None) -> dict:
+def _nearest_option_chain_component(fyers, index_symbol: str | None, spot_price: float | None) -> dict:
     if not index_symbol or not spot_price:
         return _component("Option Chain", "UNAVAILABLE", "NEUTRAL", 0, "Selected index/spot not available yet.")
 
@@ -181,7 +181,7 @@ def _nearest_option_chain_component(kite, index_symbol: str | None, spot_price: 
         step = int(index_config["strike_step"])
         atm = int(round(float(spot_price) / step) * step)
         today = today_date()
-        instruments = _cached_instruments(kite, exchange)
+        instruments = _cached_instruments(fyers, exchange)
         expiries = sorted({
             expiry
             for item in instruments
@@ -204,7 +204,7 @@ def _nearest_option_chain_component(kite, index_symbol: str | None, spot_price: 
             and item.get("instrument_type") in {"CE", "PE"}
         ]
         quote_keys = [f"{item['exchange']}:{item['tradingsymbol']}" for item in contracts]
-        quotes = kite.quote(quote_keys) if quote_keys else {}
+        quotes = fyers.quote(quote_keys) if quote_keys else {}
     except Exception as error:
         return _component("Option Chain", "UNAVAILABLE", "NEUTRAL", 0, f"Option chain unavailable: {error}")
 
@@ -409,7 +409,7 @@ def _free_market_components() -> list[dict]:
     ]
 
 
-def analyze_market_context(kite, selected_symbol: str | None = None, spot_price: float | None = None, news: dict | None = None) -> dict:
+def analyze_market_context(fyers, selected_symbol: str | None = None, spot_price: float | None = None, news: dict | None = None) -> dict:
     if not config.MARKET_CONTEXT_ENABLED:
         return {
             "enabled": False,
@@ -423,10 +423,10 @@ def analyze_market_context(kite, selected_symbol: str | None = None, spot_price:
         }
 
     components = [
-        _india_vix_component(kite),
-        _support_indices_component(kite),
-        _top_stock_breadth_component(kite),
-        _nearest_option_chain_component(kite, selected_symbol, spot_price),
+        _india_vix_component(fyers),
+        _support_indices_component(fyers),
+        _top_stock_breadth_component(fyers),
+        _nearest_option_chain_component(fyers, selected_symbol, spot_price),
         _event_news_component(news),
         *_free_market_components(),
     ]

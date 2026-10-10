@@ -26,7 +26,7 @@ _GIFT_NIFTY_CACHE = {
 
 def fetch_free_market_quotes(symbols: list[str]) -> tuple[dict[str, dict], str]:
     """
-    Fetch public quote snapshots for non-Kite context data.
+    Fetch public quote snapshots for non-Fyers context data.
 
     This uses a free public Yahoo Finance quote endpoint. It is intentionally
     best-effort: failures return an empty quote map and an error string so live

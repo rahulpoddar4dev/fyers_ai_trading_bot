@@ -14,7 +14,7 @@ from symbol_formatter import format_option_display
 
 
 def analyze_option_chain_for_trade(
-    kite,
+    fyers,
     index_symbol: str,
     signal: str,
     spot_price: float,
@@ -23,20 +23,20 @@ def analyze_option_chain_for_trade(
     if not getattr(config, "OPTION_CHAIN_ANALYZER_ENABLED", True):
         from option_selector import select_index_option
 
-        return select_index_option(kite, index_symbol, signal, spot_price, strategy_signal)
+        return select_index_option(fyers, index_symbol, signal, spot_price, strategy_signal)
 
     if signal not in {"BUY", "SELL"}:
         return None
 
     index_cfg = get_index_config(index_symbol)
     option_type = "CE" if signal == "BUY" else "PE"
-    instruments = _nearest_expiry_candidates(kite, index_cfg, option_type, spot_price)
+    instruments = _nearest_expiry_candidates(fyers, index_cfg, option_type, spot_price)
     if not instruments:
         raise RuntimeError(f"No nearby {index_symbol} {option_type} option contracts found.")
 
     quote_keys = [f"{item['exchange']}:{item['tradingsymbol']}" for item in instruments]
-    quotes = kite.quote(quote_keys)
-    oi_context = _fetch_nearby_oi_context(kite, index_cfg, spot_price)
+    quotes = fyers.quote(quote_keys)
+    oi_context = _fetch_nearby_oi_context(fyers, index_cfg, spot_price)
 
     candidates = []
     for instrument in instruments:
@@ -45,7 +45,7 @@ def analyze_option_chain_for_trade(
         if not quote:
             continue
         candidate = _build_candidate(
-            kite=kite,
+            fyers=fyers,
             index_cfg=index_cfg,
             instrument=instrument,
             quote=quote,
@@ -69,13 +69,13 @@ def analyze_option_chain_for_trade(
     return selected
 
 
-def _nearest_expiry_candidates(kite, index_cfg: dict, option_type: str, spot_price: float) -> list[dict]:
+def _nearest_expiry_candidates(fyers, index_cfg: dict, option_type: str, spot_price: float) -> list[dict]:
     today = today_date()
     step = int(index_cfg["strike_step"])
     atm = round_to_nearest_strike(float(spot_price), step)
     offsets = range(-int(config.OPTION_CHAIN_STRIKES_EACH_SIDE), int(config.OPTION_CHAIN_STRIKES_EACH_SIDE) + 1)
     allowed_strikes = {atm + (offset * step) for offset in offsets}
-    instruments = kite.instruments(index_cfg["option_exchange"])
+    instruments = fyers.instruments(index_cfg["option_exchange"])
     matches = []
 
     for instrument in instruments:
@@ -101,7 +101,7 @@ def _nearest_expiry_candidates(kite, index_cfg: dict, option_type: str, spot_pri
 
 
 def _build_candidate(
-    kite,
+    fyers,
     index_cfg: dict,
     instrument: dict,
     quote: dict,
@@ -117,7 +117,7 @@ def _build_candidate(
     ltp = float(quote.get("last_price") or 0)
     ohlc = quote.get("ohlc") or {}
     depth = extract_market_depth(quote, quantity=quantity)
-    candles = _fetch_option_candles(kite, int(instrument["instrument_token"]))
+    candles = _fetch_option_candles(fyers, int(instrument["instrument_token"]))
     enriched = enrich_candles(candles) if len(candles) >= 21 else candles
     premium = _premium_structure(enriched, quote, ltp)
     entry = _entry_plan(enriched, ltp, premium)
@@ -209,11 +209,11 @@ def _build_candidate(
     return apply_market_depth_to_trade(candidate, quote)
 
 
-def _fetch_option_candles(kite, instrument_token: int) -> list[dict]:
+def _fetch_option_candles(fyers, instrument_token: int) -> list[dict]:
     to_date = market_now_naive()
     from_date = to_date - timedelta(days=int(config.OPTION_CHAIN_CANDLE_LOOKBACK_DAYS))
     try:
-        return kite.historical_data(
+        return fyers.historical_data(
             instrument_token=instrument_token,
             from_date=from_date,
             to_date=to_date,
@@ -484,13 +484,13 @@ def _build_oi_context(index_cfg: dict, instruments: list[dict], quotes: dict, sp
     }
 
 
-def _fetch_nearby_oi_context(kite, index_cfg: dict, spot_price: float) -> dict:
+def _fetch_nearby_oi_context(fyers, index_cfg: dict, spot_price: float) -> dict:
     today = today_date()
     step = int(index_cfg["strike_step"])
     atm = round_to_nearest_strike(float(spot_price), step)
     offsets = range(-int(config.OPTION_CHAIN_STRIKES_EACH_SIDE), int(config.OPTION_CHAIN_STRIKES_EACH_SIDE) + 1)
     allowed_strikes = {atm + (offset * step) for offset in offsets}
-    instruments = kite.instruments(index_cfg["option_exchange"])
+    instruments = fyers.instruments(index_cfg["option_exchange"])
     nearby = []
 
     for instrument in instruments:
@@ -511,7 +511,7 @@ def _fetch_nearby_oi_context(kite, index_cfg: dict, spot_price: float) -> dict:
     nearest_expiry = min(item["expiry_date"] for item in nearby)
     nearby = [item for item in nearby if item["expiry_date"] == nearest_expiry]
     quote_keys = [f"{item['exchange']}:{item['tradingsymbol']}" for item in nearby]
-    quotes = kite.quote(quote_keys)
+    quotes = fyers.quote(quote_keys)
     return _build_oi_context(index_cfg, nearby, quotes, spot_price)
 
 

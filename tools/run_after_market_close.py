@@ -17,7 +17,7 @@ def _parse_args():
     parser.add_argument("--years", type=int, default=10, help="Historical lookback years.")
     parser.add_argument("--interval", default="5minute", help="Candle interval.")
     parser.add_argument("--symbols", nargs="+", default=["NIFTY", "SENSEX"], help="Backtest symbols.")
-    parser.add_argument("--skip-collect", action="store_true", help="Skip Kite data collection.")
+    parser.add_argument("--skip-collect", action="store_true", help="Skip Fyers data collection.")
     parser.add_argument("--skip-backtest", action="store_true", help="Skip CSV backtest.")
     parser.add_argument("--drive-sync", action="store_true", help="Also sync log CSV files to Google Drive.")
     parser.add_argument("--move-csv-to-drive", action="store_true", help="Move synced CSV files off local disk after upload.")

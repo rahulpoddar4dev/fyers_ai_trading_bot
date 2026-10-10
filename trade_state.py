@@ -231,8 +231,8 @@ def update_trade_prices_after_fill(trade: dict, average_price: float) -> dict:
     return trade
 
 
-def refresh_pending_live_trade(kite, trade: dict) -> dict:
-    order = get_order_by_id(kite, trade.get("order_id"))
+def refresh_pending_live_trade(fyers, trade: dict) -> dict:
+    order = get_order_by_id(fyers, trade.get("order_id"))
     if not order:
         return trade
 
@@ -265,7 +265,7 @@ def close_stale_paper_trade(exit_reason: str, trade: dict | None = None) -> dict
         return None
 
     if trade.get("status") == "LIVE_OPEN":
-        log("Live trade quote unavailable. Please check position manually in Kite.")
+        log("Live trade quote unavailable. Please check position manually in Fyers.")
         return trade
 
     entry_price = float(trade["entry_price"])
@@ -373,12 +373,12 @@ def partial_exit_quantity(trade: dict, stage: int) -> int:
     return min(target_quantity, remaining_quantity)
 
 
-def close_partial_trade(kite, trade: dict, current_price: float, stage: int, reason: str) -> dict:
+def close_partial_trade(fyers, trade: dict, current_price: float, stage: int, reason: str) -> dict:
     exit_quantity = partial_exit_quantity(trade, stage)
     if exit_quantity <= 0:
         return trade
 
-    exit_order_id = maybe_place_live_exit_order(kite, trade, reason, quantity=exit_quantity, current_price=current_price)
+    exit_order_id = maybe_place_live_exit_order(fyers, trade, reason, quantity=exit_quantity, current_price=current_price)
     if trade.get("status") == "LIVE_OPEN" and not exit_order_id:
         return trade
 
@@ -430,12 +430,12 @@ def dynamic_partial_exit_quantity(trade: dict) -> int:
     return min(exit_quantity, remaining_quantity)
 
 
-def close_dynamic_partial_trade(kite, trade: dict, current_price: float, reason: str) -> dict:
+def close_dynamic_partial_trade(fyers, trade: dict, current_price: float, reason: str) -> dict:
     exit_quantity = dynamic_partial_exit_quantity(trade)
     if exit_quantity <= 0:
         return trade
 
-    exit_order_id = maybe_place_live_exit_order(kite, trade, reason, quantity=exit_quantity, current_price=current_price)
+    exit_order_id = maybe_place_live_exit_order(fyers, trade, reason, quantity=exit_quantity, current_price=current_price)
     if trade.get("status") == "LIVE_OPEN" and not exit_order_id:
         return trade
 
@@ -545,7 +545,7 @@ def update_dynamic_safe_stop(trade: dict, current_price: float, metrics: dict) -
     return trade, reason
 
 
-def monitor_dynamic_exit(kite, trade: dict, current_price: float) -> dict:
+def monitor_dynamic_exit(fyers, trade: dict, current_price: float) -> dict:
     trade, metrics = update_dynamic_exit_memory(trade, current_price)
     trade, stop_reason = update_dynamic_safe_stop(trade, current_price, metrics)
 
@@ -603,7 +603,7 @@ def monitor_dynamic_exit(kite, trade: dict, current_price: float) -> dict:
             ("Remaining Qty", remaining_quantity),
             ("Reason", partial_reason),
         ])
-        trade = close_dynamic_partial_trade(kite, trade, current_price, "DYNAMIC_PARTIAL_EXIT")
+        trade = close_dynamic_partial_trade(fyers, trade, current_price, "DYNAMIC_PARTIAL_EXIT")
         return trade
     elif (
         metrics["peak_profit_percent"] >= float(getattr(config, "DYNAMIC_FULL_EXIT_MIN_PEAK_PROFIT_PERCENT", 10) or 10)
@@ -654,10 +654,10 @@ def monitor_dynamic_exit(kite, trade: dict, current_price: float) -> dict:
 
     if full_exit_reason:
         trade["exit_decision_reason"] = full_exit_reason
-        exit_order_id = maybe_place_live_exit_order(kite, trade, exit_reason, current_price=current_price)
+        exit_order_id = maybe_place_live_exit_order(fyers, trade, exit_reason, current_price=current_price)
         if trade.get("status") == "LIVE_OPEN" and not exit_order_id:
             trade["last_exit_order_failed_at"] = csv_datetime()
-            trade["last_exit_order_failed_reason"] = "Broker rejected dynamic exit order. Position may still be open in Kite."
+            trade["last_exit_order_failed_reason"] = "Broker rejected dynamic exit order. Position may still be open in Fyers."
             _replace_state_trade(trade)
             return trade
         closed = close_open_trade(current_price, exit_reason, trade)
@@ -900,22 +900,22 @@ def update_target_stage_stop(trade: dict, current_price: float) -> tuple[dict, s
     return trade, reason
 
 
-def square_off_open_trade(kite, reason: str = "MARKET_CLOSE_SQUARE_OFF") -> dict | None:
+def square_off_open_trade(fyers, reason: str = "MARKET_CLOSE_SQUARE_OFF") -> dict | None:
     closed_trades = []
     for trade in load_open_trades():
-        closed = _square_off_trade(kite, trade, reason)
+        closed = _square_off_trade(fyers, trade, reason)
         if closed:
             closed_trades.append(closed)
 
     return closed_trades[0] if closed_trades else None
 
 
-def _square_off_trade(kite, trade: dict, reason: str = "MARKET_CLOSE_SQUARE_OFF") -> dict | None:
+def _square_off_trade(fyers, trade: dict, reason: str = "MARKET_CLOSE_SQUARE_OFF") -> dict | None:
     if not trade:
         return None
 
     if trade.get("status") == "LIVE_PENDING":
-        trade = refresh_pending_live_trade(kite, trade)
+        trade = refresh_pending_live_trade(fyers, trade)
         if trade.get("status") != "LIVE_OPEN":
             table("PENDING ENTRY NOT SQUARED OFF", [
                 ("Option", trade.get("display_symbol", trade.get("option_symbol"))),
@@ -930,12 +930,12 @@ def _square_off_trade(kite, trade: dict, reason: str = "MARKET_CLOSE_SQUARE_OFF"
         return close_stale_paper_trade("EXPIRED_CONTRACT", trade)
 
     quote_key = f"{trade.get('exchange', 'NFO')}:{trade['option_symbol']}"
-    quote_response = kite.quote([quote_key])
+    quote_response = fyers.quote([quote_key])
     if quote_key not in quote_response:
         return close_stale_paper_trade("QUOTE_NOT_AVAILABLE", trade)
 
     current_price = float(quote_response[quote_key]["last_price"])
-    exit_order_id = maybe_place_live_exit_order(kite, trade, reason, current_price=current_price)
+    exit_order_id = maybe_place_live_exit_order(fyers, trade, reason, current_price=current_price)
     closed = close_open_trade(current_price, reason, trade)
 
     if closed and exit_order_id:
@@ -955,22 +955,22 @@ def _square_off_trade(kite, trade: dict, reason: str = "MARKET_CLOSE_SQUARE_OFF"
     return closed
 
 
-def monitor_open_trades(kite) -> list[dict]:
+def monitor_open_trades(fyers) -> list[dict]:
     results = []
     for trade in load_open_trades():
-        result = monitor_open_trade(kite, trade)
+        result = monitor_open_trade(fyers, trade)
         if result:
             results.append(result)
     return results
 
 
-def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
+def monitor_open_trade(fyers, trade: dict | None = None) -> dict | None:
     trade = trade or load_open_trade()
     if not trade:
         return None
 
     if trade.get("status") == "LIVE_PENDING":
-        trade = refresh_pending_live_trade(kite, trade)
+        trade = refresh_pending_live_trade(fyers, trade)
         table("PENDING ENTRY ORDER", [
             ("Option", trade.get("display_symbol", trade.get("option_symbol"))),
             ("Order ID", trade.get("order_id")),
@@ -989,7 +989,7 @@ def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
         table("STALE PAPER TRADE CLOSED", [
             ("Option", trade["option_symbol"]),
             ("Expiry", trade.get("expiry")),
-            ("Reason", "Contract expired, so Kite quote is no longer available."),
+            ("Reason", "Contract expired, so Fyers quote is no longer available."),
             ("Result", "FAIL"),
             ("P&L", f"Rs {closed['pnl']}" if closed else "N/A"),
         ])
@@ -998,12 +998,12 @@ def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
         return closed
 
     quote_key = f"{trade.get('exchange', 'NFO')}:{trade['option_symbol']}"
-    quote_response = kite.quote([quote_key])
+    quote_response = fyers.quote([quote_key])
     if quote_key not in quote_response:
         closed = close_stale_paper_trade("QUOTE_NOT_AVAILABLE", trade)
         table("STALE PAPER TRADE CLOSED", [
             ("Option", trade["option_symbol"]),
-            ("Reason", "Kite did not return quote for this option symbol."),
+            ("Reason", "Fyers did not return quote for this option symbol."),
             ("Result", "FAIL"),
             ("P&L", f"Rs {closed['pnl']}" if closed else "N/A"),
         ])
@@ -1015,7 +1015,7 @@ def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
     current_price = float(option_quote["last_price"])
     trade = apply_market_depth_to_trade(trade, option_quote)
     if trade.get("dynamic_exit_enabled"):
-        return monitor_dynamic_exit(kite, trade, current_price)
+        return monitor_dynamic_exit(fyers, trade, current_price)
 
     target = float(trade.get("target_3") or trade["target"])
     target_1 = trade.get("target_1")
@@ -1032,7 +1032,7 @@ def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
             f"EXIT: current Rs {current_price} reached Target 1 Rs {target_1}. "
             "Closing 1-lot trade at Target 1."
         )
-        exit_order_id = maybe_place_live_exit_order(kite, trade, "TARGET_1_HIT", current_price=current_price)
+        exit_order_id = maybe_place_live_exit_order(fyers, trade, "TARGET_1_HIT", current_price=current_price)
         if trade.get("status") == "LIVE_OPEN" and not exit_order_id:
             return trade
         closed = close_open_trade(current_price, "TARGET_1_HIT", trade)
@@ -1052,7 +1052,7 @@ def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
             from index_config import get_index_config
             idx_cfg = get_index_config(index_symbol)
             idx_quote_key = idx_cfg["quote_key"]
-            idx_quote = kite.quote([idx_quote_key])
+            idx_quote = fyers.quote([idx_quote_key])
             if idx_quote_key in idx_quote:
                 idx_ltp = float(idx_quote[idx_quote_key]["last_price"])
                 opt_type = trade.get("option_type")
@@ -1075,7 +1075,7 @@ def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
                         ("Reason", "UNDERLYING_TREND_INVALIDATION"),
                         ("Action", "Placing live exit order."),
                     ])
-                    exit_order_id = maybe_place_live_exit_order(kite, trade, "UNDERLYING_TREND_INVALIDATION", current_price=current_price)
+                    exit_order_id = maybe_place_live_exit_order(fyers, trade, "UNDERLYING_TREND_INVALIDATION", current_price=current_price)
                     if trade.get("status") == "LIVE_OPEN" and not exit_order_id:
                         return trade
                     closed = close_open_trade(current_price, "UNDERLYING_TREND_INVALIDATION", trade)
@@ -1110,7 +1110,7 @@ def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
                 f"EXIT: current Rs {current_price} reached final target Rs {target}. "
                 "Closing all remaining quantity at T3/final target."
             )
-            exit_order_id = maybe_place_live_exit_order(kite, trade, "TARGET_3_HIT", current_price=current_price)
+            exit_order_id = maybe_place_live_exit_order(fyers, trade, "TARGET_3_HIT", current_price=current_price)
             if trade.get("status") == "LIVE_OPEN" and not exit_order_id:
                 return trade
             closed = close_open_trade(current_price, "TARGET_3_HIT", trade)
@@ -1124,10 +1124,10 @@ def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
 
     trade, stage_reason = update_target_stage_stop(trade, current_price)
     if target_1 and is_target_hit(current_price, float(target_1), entry_price) and not trade.get("partial_exit_t1_done"):
-        trade = close_partial_trade(kite, trade, current_price, 1, "TARGET_1_PARTIAL_EXIT")
+        trade = close_partial_trade(fyers, trade, current_price, 1, "TARGET_1_PARTIAL_EXIT")
         stage_reason = trade.get("target_stage_reason") or stage_reason
     elif target_2 and is_target_hit(current_price, float(target_2), entry_price) and not trade.get("partial_exit_t2_done"):
-        trade = close_partial_trade(kite, trade, current_price, 2, "TARGET_2_PARTIAL_EXIT")
+        trade = close_partial_trade(fyers, trade, current_price, 2, "TARGET_2_PARTIAL_EXIT")
         stage_reason = trade.get("target_stage_reason") or stage_reason
 
     trade, trailing_reason = update_trailing_stop(trade, current_price)
@@ -1181,10 +1181,10 @@ def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
             ("Remaining Qty", remaining_quantity),
             ("Action", "Placing live exit order."),
         ])
-        exit_order_id = maybe_place_live_exit_order(kite, trade, "STOP_LOSS_HIT", current_price=current_price)
+        exit_order_id = maybe_place_live_exit_order(fyers, trade, "STOP_LOSS_HIT", current_price=current_price)
         if trade.get("status") == "LIVE_OPEN" and not exit_order_id:
             trade["last_exit_order_failed_at"] = csv_datetime()
-            trade["last_exit_order_failed_reason"] = "Broker rejected exit order. Position may still be open in Kite."
+            trade["last_exit_order_failed_reason"] = "Broker rejected exit order. Position may still be open in Fyers."
             _replace_state_trade(trade)
             return trade
         closed = close_open_trade(current_price, "STOP_LOSS_HIT", trade)
@@ -1210,10 +1210,10 @@ def monitor_open_trade(kite, trade: dict | None = None) -> dict | None:
             ("Remaining Qty", remaining_quantity),
             ("Action", "Placing live exit order (Time decay protection)."),
         ])
-        exit_order_id = maybe_place_live_exit_order(kite, trade, "TIME_BASED_EXIT", current_price=current_price)
+        exit_order_id = maybe_place_live_exit_order(fyers, trade, "TIME_BASED_EXIT", current_price=current_price)
         if trade.get("status") == "LIVE_OPEN" and not exit_order_id:
             trade["last_exit_order_failed_at"] = csv_datetime()
-            trade["last_exit_order_failed_reason"] = "Broker rejected exit order. Position may still be open in Kite."
+            trade["last_exit_order_failed_reason"] = "Broker rejected exit order. Position may still be open in Fyers."
             _replace_state_trade(trade)
             return trade
         closed = close_open_trade(current_price, "TIME_BASED_EXIT", trade)
@@ -1241,7 +1241,7 @@ def _exit_limit_price(trade: dict, current_price: float | None = None) -> float 
     return round_to_tick(reference_price * (1 - buffer_percent))
 
 
-def maybe_place_live_exit_order(kite, trade: dict, reason: str, quantity: int | None = None, current_price: float | None = None):
+def maybe_place_live_exit_order(fyers, trade: dict, reason: str, quantity: int | None = None, current_price: float | None = None):
     if trade.get("status") != "LIVE_OPEN":
         return None
 
@@ -1276,7 +1276,7 @@ def maybe_place_live_exit_order(kite, trade: dict, reason: str, quantity: int | 
             exit_order_type = "MARKET"
 
     return place_order(
-        kite,
+        fyers,
         trade["option_symbol"],
         "SELL",
         int(quantity or trade.get("remaining_quantity") or trade["quantity"]),

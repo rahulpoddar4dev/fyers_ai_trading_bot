@@ -15,7 +15,7 @@ if str(BASE_DIR) not in sys.path:
 
 import config
 from index_config import get_index_config
-from kite_login import login
+from fyers_login import login
 from market_data import _find_index_token
 
 
@@ -52,11 +52,11 @@ OPTION_MANIFEST_FIELDS = [
 def _parse_args():
     parser = argparse.ArgumentParser(description="Collect NIFTY/SENSEX/VIX historical candles for backtesting.")
     parser.add_argument("--symbols", nargs="+", default=[*config.ANALYZE_INDICES, "INDIA_VIX"], help="Symbols to collect.")
-    parser.add_argument("--interval", default=config.CANDLE_INTERVAL, help="Kite candle interval, e.g. 5minute.")
+    parser.add_argument("--interval", default=config.CANDLE_INTERVAL, help="Fyers candle interval, e.g. 5minute.")
     parser.add_argument("--years", type=int, default=10, help="Lookback years to fetch.")
     parser.add_argument("--days", type=int, default=None, help="Optional exact lookback days; overrides --years.")
-    parser.add_argument("--chunk-days", type=int, default=60, help="Fetch in chunks to avoid Kite range limits.")
-    parser.add_argument("--sleep", type=float, default=0.4, help="Sleep seconds between Kite calls.")
+    parser.add_argument("--chunk-days", type=int, default=60, help="Fetch in chunks to avoid Fyers range limits.")
+    parser.add_argument("--sleep", type=float, default=0.4, help="Sleep seconds between Fyers calls.")
     parser.add_argument("--skip-events-template", action="store_true", help="Do not create/update market events template.")
     parser.add_argument("--skip-option-manifest", action="store_true", help="Do not create/update option manifest template.")
     return parser.parse_args()
@@ -121,8 +121,8 @@ def _write_rows(path: Path, rows_by_time: dict[str, dict]) -> None:
         writer.writerows(rows)
 
 
-def _fetch_symbol(kite, symbol: str, interval: str, days: int, chunk_days: int, sleep_seconds: float) -> dict:
-    token = _find_index_token(kite, symbol)
+def _fetch_symbol(fyers, symbol: str, interval: str, days: int, chunk_days: int, sleep_seconds: float) -> dict:
+    token = _find_index_token(fyers, symbol)
     to_date = datetime.now()
     start_date = to_date - timedelta(days=days)
     cursor = start_date
@@ -130,7 +130,7 @@ def _fetch_symbol(kite, symbol: str, interval: str, days: int, chunk_days: int, 
 
     while cursor < to_date:
         chunk_to = min(cursor + timedelta(days=chunk_days), to_date)
-        candles = kite.historical_data(
+        candles = fyers.historical_data(
             instrument_token=token,
             from_date=cursor,
             to_date=chunk_to,
@@ -232,7 +232,7 @@ def _write_run_log(result: dict) -> Path:
 
 def main():
     args = _parse_args()
-    kite = login()
+    fyers = login()
     started_at = datetime.now().isoformat()
     results = []
     days = args.days if args.days is not None else int(args.years * 365.25)
@@ -241,7 +241,7 @@ def main():
         try:
             results.append(
                 _fetch_symbol(
-                    kite=kite,
+                    fyers=fyers,
                     symbol=symbol,
                     interval=args.interval,
                     days=days,

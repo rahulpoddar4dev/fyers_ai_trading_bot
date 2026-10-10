@@ -101,7 +101,7 @@ def add_title(doc):
 
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = p.add_run("Kite Connect + Python + Paper Trading Dashboard")
+    r = p.add_run("Fyers API + Python + Paper Trading Dashboard")
     set_text(r, color=DARK_BLUE, size=13)
 
     p = doc.add_paragraph()
@@ -205,7 +205,7 @@ def build_doc():
 
     doc.add_heading("1. Project Overview", level=1)
     doc.add_paragraph(
-        "We built a local Python trading bot that connects to Zerodha Kite Connect, analyzes NIFTY and SENSEX, "
+        "We built a local Python trading bot that connects to Fyers API v3, analyzes NIFTY and SENSEX, "
         "selects option contracts, tracks paper trades, records results, and displays activity in a browser dashboard."
     )
     add_kv_table(doc, [
@@ -219,8 +219,8 @@ def build_doc():
     doc.add_heading("2. Major Milestones Completed", level=1)
     add_numbered(doc, [
         "Created the Python trading-bot project structure.",
-        "Installed and wired Kite Connect, Anthropic, pandas, and request-related dependencies.",
-        "Built Kite login, saved-session reuse, and browser-based request-token capture fallback.",
+        "Installed and wired Fyers API v3, Anthropic, pandas, and request-related dependencies.",
+        "Built Fyers login, saved-session reuse, and browser-based auth_code capture fallback.",
         "Added live quote and historical candle fetching for NIFTY and SENSEX.",
         "Added rule-based strategy logic using EMA, RSI, VWAP, ATR, and ADX.",
         "Added NIFTY versus SENSEX comparison before selecting a trade.",
@@ -233,9 +233,9 @@ def build_doc():
 
     doc.add_heading("3. Important Files", level=1)
     add_kv_table(doc, [
-        ("config.py", "Main settings: mode, paper balance, risk rules, Kite callback, news settings, indicators, timing rules."),
-        ("main.py", "Starts dashboard, logs in to Kite, runs analysis cycle, applies risk checks, and executes paper/live flow."),
-        ("kite_login.py", "Handles saved sessions, automatic callback login, Chrome URL fallback, and session token generation."),
+        ("config.py", "Main settings: mode, paper balance, risk rules, Fyers redirect URI, news settings, indicators, timing rules."),
+        ("main.py", "Starts dashboard, logs in to Fyers, runs analysis cycle, applies risk checks, and executes paper/live flow."),
+        ("fyers_login.py", "Handles saved sessions, automatic callback login, redirect URL fallback, and session token generation."),
         ("market_data.py", "Fetches quote and candle data for NIFTY/SENSEX."),
         ("strategy.py", "Builds BUY/SELL/HOLD signals using indicators and filters."),
         ("option_selector.py", "Chooses option contract, strike, expiry, target, stop loss, and adaptive exit profile."),
@@ -250,7 +250,7 @@ def build_doc():
     doc.add_heading("4. Current Trading Flow", level=1)
     add_numbered(doc, [
         "Start main.py and dashboard.",
-        "Reuse saved Kite session if still valid; otherwise complete Kite login.",
+        "Reuse saved Fyers session if still valid; otherwise complete Fyers login.",
         "Check account balance and use paper override if PAPER mode is active.",
         "Block fresh trades during unsafe time windows such as before 09:25, lunch chop, after 15:00, expiry-day late window, or square-off time.",
         "Fetch NIFTY and SENSEX quotes/candles.",
@@ -307,10 +307,10 @@ def build_doc():
 
     doc.add_heading("9. Login and Dashboard", level=1)
     add_kv_table(doc, [
-        ("Saved session", "kite_session.json stores same-day access token. Bot should reuse it until token expires."),
-        ("Automatic login", "Local callback server attempts to capture request_token automatically."),
-        ("Chrome fallback", "If Kite redirects to old 127.0.0.1 URL, code can read active Chrome tab URL and extract request_token."),
-        ("Dashboard account display", "Dashboard shows the Kite account name/user id from profile."),
+        ("Saved session", "fyers_session.json stores same-day access token. Bot should reuse it until token expires."),
+        ("Automatic login", "Local callback server or redirect URI captures auth_code."),
+        ("Chrome fallback", "If Fyers redirects to redirect URI, code can extract auth_code from the URL."),
+        ("Dashboard account display", "Dashboard shows the Fyers account name/user id from profile."),
         ("Dashboard run mode", "main.py starts the dashboard automatically; dashboard.py separately is normally not needed."),
     ])
 
@@ -337,7 +337,7 @@ def build_doc():
         ("Run dashboard only", "python3 dashboard.py"),
         ("Run performance report", "python3 performance_report.py"),
         ("Run backtest", "python3 backtest_strategy.py"),
-        ("Force fresh login", "rm kite_session.json, then python3 main.py"),
+        ("Force fresh login", "rm fyers_session.json, then python3 main.py"),
     ])
 
     doc.add_heading("13. Current Safety Status", level=1)
@@ -352,7 +352,7 @@ def build_doc():
         "ENABLE_LIVE_AUTO should remain False until explicitly ready.",
         "Do not commit or share API secrets.",
         "Move keys from config.py to environment variables before serious use.",
-        "Validate SENSEX/BFO availability with Kite account permissions.",
+        "Validate SENSEX/BFO availability with Fyers account permissions.",
     ])
 
     doc.add_heading("14. Recommended Next Improvements", level=1)

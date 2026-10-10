@@ -124,7 +124,7 @@ def calculate_option_stop_loss_percent(
 
 
 def select_index_option(
-    kite,
+    fyers,
     index_symbol: str,
     signal: str,
     spot_price: float,
@@ -145,7 +145,7 @@ def select_index_option(
     strike = _choose_strike(index_config, signal, spot_price)
     today = today_date()
 
-    instruments = kite.instruments(index_config["option_exchange"])
+    instruments = fyers.instruments(index_config["option_exchange"])
     matches = []
 
     for instrument in instruments:
@@ -166,7 +166,7 @@ def select_index_option(
     selected = sorted(matches, key=lambda item: _as_date(item["expiry"]))[0]
     trading_symbol = selected["tradingsymbol"]
     quote_key = f"{selected['exchange']}:{trading_symbol}"
-    option_quote = kite.quote([quote_key])[quote_key]
+    option_quote = fyers.quote([quote_key])[quote_key]
     entry_price = float(option_quote["last_price"])
 
     # Delta / Premium Sweet-Spot Optimization: If selected ITM premium is unusually bloated (> 350),
@@ -185,7 +185,7 @@ def select_index_option(
                 atm_inst = atm_matches[0]
                 atm_quote_key = f"{atm_inst['exchange']}:{atm_inst['tradingsymbol']}"
                 try:
-                    atm_q = kite.quote([atm_quote_key]).get(atm_quote_key)
+                    atm_q = fyers.quote([atm_quote_key]).get(atm_quote_key)
                     if atm_q and float(atm_q.get("last_price") or 0) > 0:
                         selected = atm_inst
                         trading_symbol = selected["tradingsymbol"]
@@ -270,5 +270,5 @@ def select_index_option(
     return apply_market_depth_to_trade(option_trade, option_quote)
 
 
-def select_nifty_option(kite, signal: str, spot_price: float) -> dict | None:
-    return select_index_option(kite, "NIFTY", signal, spot_price)
+def select_nifty_option(fyers, signal: str, spot_price: float) -> dict | None:
+    return select_index_option(fyers, "NIFTY", signal, spot_price)

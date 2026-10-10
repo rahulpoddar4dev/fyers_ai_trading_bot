@@ -757,8 +757,9 @@
         <button id="paperModeBtn" class="active">Paper</button>
         <button id="autoModeBtn" class="live">Auto</button>
       </div>
-      <button id="kiteLoginBtn" class="login-button">Kite Login</button>
-      <div class="updated" id="kiteSessionStatus">Kite: checking...</div>
+      <button id="fyersLoginBtn" class="login-button">Fyers Login</button>
+      <button id="fyersTokenBtn" class="login-button">Paste Auth Code</button>
+      <div class="updated" id="fyersSessionStatus">Fyers: checking...</div>
       <button id="todayViewBtn" class="active">Today</button>
       <button id="historyViewBtn">History</button>
       <div class="updated" id="updated">Loading...</div>
@@ -1370,13 +1371,15 @@
       document.getElementById("autoModeBtn").classList.toggle("active", mode === "LIVE_AUTO");
     }
 
-    function renderKiteSession(session) {
-      const button = document.getElementById("kiteLoginBtn");
-      const status = document.getElementById("kiteSessionStatus");
+    function renderFyersSession(session) {
+      const button = document.getElementById("fyersLoginBtn");
+      const tokenBtn = document.getElementById("fyersTokenBtn");
+      const status = document.getElementById("fyersSessionStatus");
       const active = Boolean(session?.active);
       button.disabled = active;
-      button.textContent = active ? "Kite Active" : "Kite Login";
-      status.textContent = active ? "Kite: Active" : "Kite: Login needed";
+      button.textContent = active ? "Fyers Active" : "Fyers Login";
+      if (tokenBtn) tokenBtn.classList.toggle("hidden", active);
+      status.textContent = active ? "Fyers: Active" : "Fyers: Login needed";
     }
 
     function renderDateOptions(days) {
@@ -1457,8 +1460,8 @@
       const allFinal = activeMode === "PAPER"
         ? Number(data.paper_account.available_balance || 0)
         : Number(data.active_account.final_amount || 0);
-      const fundText = fundStale && activeMode !== "PAPER" ? "Kite login needed" : money(currentFund);
-      const finalText = fundStale && activeMode !== "PAPER" ? "Kite login needed" : money(data.active_account.final_amount);
+      const fundText = fundStale && activeMode !== "PAPER" ? "Fyers login needed" : money(currentFund);
+      const finalText = fundStale && activeMode !== "PAPER" ? "Fyers login needed" : money(data.active_account.final_amount);
       today.combined_trades = mergeOpenTradesIntoRows(today.combined_trades, data.open_trades || data.open_trade);
 
       setText("accountName", accountName);
@@ -1470,12 +1473,12 @@
       setText("todayFinal", finalText);
       setText("mode", activeMode);
       renderModeSwitch(data.config);
-      renderKiteSession(data.kite_session);
+      renderFyersSession(data.fyers_session);
       setText("allFund", fundText);
       setText("allClosed", data.performance.closed_trades);
       setText("allWinRate", `${data.performance.win_rate}%`);
       setText("allPnl", money(data.performance.total_pnl));
-      setText("allFinal", fundStale && activeMode !== "PAPER" ? "Kite login needed" : money(allFinal));
+      setText("allFinal", fundStale && activeMode !== "PAPER" ? "Fyers login needed" : money(allFinal));
       setText("allSuccess", data.performance.success);
       setText("profitFactor", data.performance.profit_factor ?? 0);
       setText("maxDrawdown", money(data.performance.max_drawdown || 0));
@@ -1562,11 +1565,30 @@
       }
     }
 
+    async function submitFyersAuthCode() {
+      const value = window.prompt("Paste Fyers auth_code OR the full redirected URL (https://trade.fyers.in/api-login/redirect-uri/index.html?s=ok&code=200&auth_code=...):");
+      if (!value || !value.trim()) return;
+      try {
+        const response = await fetch("/api/fyers/submit-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: value.trim() })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        setText("updated", `Fyers login successful (${result.user_name || result.user_id || "Active"})`);
+        await loadDashboard();
+      } catch (error) {
+        window.alert(`Fyers login error: ${error.message || error}`);
+      }
+    }
+
     document.getElementById("paperModeBtn").addEventListener("click", () => setTradingMode("PAPER"));
     document.getElementById("autoModeBtn").addEventListener("click", () => setTradingMode("LIVE_AUTO"));
-    document.getElementById("kiteLoginBtn").addEventListener("click", () => {
-      window.location.href = "/kite/login";
+    document.getElementById("fyersLoginBtn").addEventListener("click", () => {
+      window.open("/fyers/login", "_blank");
     });
+    document.getElementById("fyersTokenBtn").addEventListener("click", submitFyersAuthCode);
 
     document.getElementById("todayHistoryBtn").addEventListener("click", () => {
       todayTab = "history";

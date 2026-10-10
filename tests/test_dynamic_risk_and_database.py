@@ -316,8 +316,8 @@ def test_position_sizing_cheap_option_scales_beyond_three_lots():
 def test_single_lot_exits_at_target_one(monkeypatch):
     import trade_state
 
-    # Mock kite and dependencies
-    class MockKite:
+    # Mock fyers and dependencies
+    class MockFyers:
         def quote(self, keys):
             return {keys[0]: {"last_price": 125.0, "depth": {"buy": [], "sell": []}}}
 
@@ -346,7 +346,7 @@ def test_single_lot_exits_at_target_one(monkeypatch):
     monkeypatch.setattr(trade_state, "print_performance_summary", lambda: None)
 
     # When price is 125 (>= target_1 120), 1-lot trade must close at TARGET_1_HIT
-    closed = trade_state.monitor_open_trade(MockKite(), trade)
+    closed = trade_state.monitor_open_trade(MockFyers(), trade)
     assert closed["status"] == "CLOSED"
     assert closed["exit_reason"] == "TARGET_1_HIT"
 
@@ -600,7 +600,7 @@ def test_market_close_and_sl_force_market_order(monkeypatch):
 
     recorded_orders = []
 
-    def mock_place_order(kite, symbol, action, quantity, exchange=None, order_type="MARKET", price=None):
+    def mock_place_order(fyers, symbol, action, quantity, exchange=None, order_type="MARKET", price=None):
         recorded_orders.append({"symbol": symbol, "action": action, "order_type": order_type, "price": price})
         return "ORD123456"
 
@@ -610,7 +610,7 @@ def test_market_close_and_sl_force_market_order(monkeypatch):
     monkeypatch.setattr(config, "FORCE_MARKET_ON_SQUARE_OFF", True)
     monkeypatch.setattr(config, "FORCE_MARKET_ON_SL", True)
 
-    fake_kite = object()
+    fake_fyers = object()
     trade = {
         "status": "LIVE_OPEN",
         "mode": "LIVE_AUTO",
@@ -623,15 +623,15 @@ def test_market_close_and_sl_force_market_order(monkeypatch):
     monkeypatch.setattr(config, "ENABLE_LIVE_AUTO", True)
 
     # 1. 15:20 Square-off MUST force MARKET order
-    maybe_place_live_exit_order(fake_kite, trade, "MARKET_CLOSE_SQUARE_OFF", current_price=95.0)
+    maybe_place_live_exit_order(fake_fyers, trade, "MARKET_CLOSE_SQUARE_OFF", current_price=95.0)
     assert recorded_orders[-1]["order_type"] == "MARKET"
 
     # 2. Stop loss hit MUST force MARKET order
-    maybe_place_live_exit_order(fake_kite, trade, "STOP_LOSS_HIT", current_price=90.0)
+    maybe_place_live_exit_order(fake_fyers, trade, "STOP_LOSS_HIT", current_price=90.0)
     assert recorded_orders[-1]["order_type"] == "MARKET"
 
     # 3. Target 1 Partial exit uses configured LIMIT order
-    maybe_place_live_exit_order(fake_kite, trade, "TARGET_1_PARTIAL_EXIT", current_price=112.0)
+    maybe_place_live_exit_order(fake_fyers, trade, "TARGET_1_PARTIAL_EXIT", current_price=112.0)
     assert recorded_orders[-1]["order_type"] == "LIMIT"
 
 

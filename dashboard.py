@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 import config
 from account_status import load_account_status, save_account_status
 from analysis_snapshot import load_analysis_snapshot
-from kite_login import kite, save_access_token, try_saved_login
+from fyers_login import fyers, save_access_token, try_saved_login
 from market_time import today_date
 from order_manager import get_balance
 from paper_account import build_paper_account
@@ -217,15 +217,15 @@ def active_account_summary(account_status: dict, paper_account: dict, today_perf
 
 def refresh_broker_account_status() -> dict | None:
     try:
-        kite = try_saved_login(silent=True)
-        if not kite:
+        fyers_client = try_saved_login(silent=True)
+        if not fyers_client:
             return None
-        balance = get_balance(kite)
+        balance = get_balance(fyers_client)
     except Exception:
         return None
 
     try:
-        profile = kite.profile()
+        profile = fyers_client.profile()
     except Exception:
         profile = None
     return save_account_status(balance, profile, active_balance=balance, mode=config.TRADING_MODE)
@@ -251,18 +251,19 @@ def load_active_account_status(mode: str) -> dict:
     return account_status
 
 
-def kite_session_status() -> dict:
+def fyers_session_status() -> dict:
     try:
-        kite_client = try_saved_login(silent=True)
-        if not kite_client:
-            return {"active": False, "message": "Kite login needed"}
-        profile = kite_client.profile()
+        fyers_client = try_saved_login(silent=True)
+        if not fyers_client:
+            return {"active": False, "message": "Fyers login needed", "broker": "Fyers"}
+        profile = fyers_client.profile()
     except Exception as error:
-        return {"active": False, "message": str(error)}
+        return {"active": False, "message": str(error), "broker": "Fyers"}
 
     return {
         "active": True,
-        "message": "Kite session active",
+        "message": "Fyers session active",
+        "broker": "Fyers",
         "user_name": profile.get("user_name"),
         "user_id": profile.get("user_id"),
     }
@@ -826,7 +827,7 @@ def build_dashboard_data() -> dict:
             "no_new_trade_after": config.NO_NEW_TRADE_AFTER,
             "square_off_time": config.SQUARE_OFF_TIME,
         },
-        "kite_session": kite_session_status(),
+        "fyers_session": fyers_session_status(),
         "open_trade": open_trades[0] if open_trades else None,
         "open_trades": open_trades,
         "pre_open": load_pre_open_context(),
@@ -844,22 +845,22 @@ def build_dashboard_data() -> dict:
     }
 
 
-def process_request_token(token_or_url: str) -> dict:
-    from kite_login import _extract_request_token
-    request_token = _extract_request_token(token_or_url)
-    if not request_token:
-        raise ValueError("No valid request_token found.")
+def process_auth_code(token_or_url: str) -> dict:
+    from fyers_login import _active_api_secret, _extract_auth_code
+    auth_code = _extract_auth_code(token_or_url)
+    if not auth_code:
+        raise ValueError("No valid Fyers auth_code found.")
 
-    data = kite.generate_session(
-        request_token,
-        api_secret=config.KITE_API_SECRET,
+    data = fyers.generate_session(
+        auth_code,
+        api_secret=_active_api_secret(),
     )
     access_token = data["access_token"]
-    kite.set_access_token(access_token)
+    fyers.set_access_token(access_token)
     save_access_token(access_token)
     profile = {}
     try:
-        profile = kite.profile()
+        profile = fyers.profile()
         save_account_status(
             load_account_status().get("available_balance", 0),
             profile,
@@ -882,19 +883,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         params = parse_qs(parsed.query)
-        request_token = params.get("request_token", [""])[0]
+        auth_code = params.get("auth_code", [""])[0]
 
-        if request_token:
+        if auth_code:
             try:
-                process_request_token(request_token)
-                if path in {"/callback", "/kite/callback"}:
-                    self.send_kite_login_page("Kite login successful.", success=True)
+                process_auth_code(auth_code)
+                if path in {"/callback", "/fyers/callback"}:
+                    self.send_fyers_login_page("Fyers login successful.", success=True)
                     return
                 self.redirect("/")
                 return
             except Exception as login_error:
-                if path in {"/callback", "/kite/callback"}:
-                    self.send_kite_login_page(f"Kite login failed: {login_error}", success=False)
+                if path in {"/callback", "/fyers/callback"}:
+                    self.send_fyers_login_page(f"Fyers login failed: {login_error}", success=False)
                     return
 
         if path == "/" or path == "/index.html":
@@ -905,12 +906,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json(build_dashboard_data())
             return
 
-        if path == "/kite/login":
-            self.redirect(kite.login_url())
+        if path == "/fyers/login":
+            self.redirect(fyers.login_url())
             return
 
-        if path in {"/callback", "/kite/callback"}:
-            self.handle_kite_callback(parsed)
+        if path in {"/callback", "/fyers/callback"}:
+            self.handle_fyers_callback(parsed)
             return
 
         if path == "/api/day":
@@ -932,36 +933,36 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         self.send_json({"error": "Not found"})
 
-    def handle_kite_callback(self, parsed):
+    def handle_fyers_callback(self, parsed):
         params = parse_qs(parsed.query)
-        request_token = params.get("request_token", [""])[0]
-        status = params.get("status", [""])[0]
+        auth_code = params.get("auth_code", [""])[0]
+        status = params.get("status", [""])[0] or params.get("s", [""])[0]
         error = params.get("error", [""])[0] or params.get("message", [""])[0]
 
-        if not request_token or status not in {"", "success"}:
-            self.send_kite_login_page(
-                error or "Kite login did not return a request token.",
+        if not auth_code or status.lower() not in {"", "success", "ok"}:
+            self.send_fyers_login_page(
+                error or "Fyers login did not return an auth_code.",
                 success=False,
             )
             return
 
         try:
-            process_request_token(request_token)
+            process_auth_code(auth_code)
         except Exception as login_error:
-            self.send_kite_login_page(f"Kite login failed: {login_error}", success=False)
+            self.send_fyers_login_page(f"Fyers login failed: {login_error}", success=False)
             return
 
-        self.send_kite_login_page("Kite login successful.", success=True)
+        self.send_fyers_login_page("Fyers login successful.", success=True)
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/api/kite/submit-token":
+        if parsed.path == "/api/fyers/submit-token":
             length = int(self.headers.get("Content-Length", "0") or 0)
             body = self.rfile.read(length).decode("utf-8") if length else "{}"
             try:
                 payload = json.loads(body)
                 raw_value = str(payload.get("token") or payload.get("url") or payload.get("token_or_url") or "")
-                res = process_request_token(raw_value)
+                res = process_auth_code(raw_value)
                 self.send_json(res)
             except Exception as error:
                 self.send_json({"ok": False, "error": str(error)}, status=400)
@@ -1000,9 +1001,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body.encode("utf-8"))
 
-    def send_kite_login_page(self, message: str, success: bool):
+    def send_fyers_login_page(self, message: str, success: bool):
         redirect_tag = '<meta http-equiv="refresh" content="1; url=/">' if success else ""
-        title = "Kite Login"
+        title = "Fyers Login"
         body = f"""
         <!doctype html>
         <html>

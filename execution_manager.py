@@ -25,7 +25,7 @@ def entry_limit_price(option_trade: dict) -> float:
     return round_to_tick(entry_price * (1 + buffer_percent))
 
 
-def execute_trade(kite, option_trade: dict, signal: dict, balance: float):
+def execute_trade(fyers, option_trade: dict, signal: dict, balance: float):
     required_amount = estimated_required_amount(option_trade)
     print(f"\nEstimated required amount: Rs {required_amount}")
 
@@ -96,7 +96,7 @@ def execute_trade(kite, option_trade: dict, signal: dict, balance: float):
     option_trade["entry_order_price"] = limit_price or option_trade.get("entry_price")
 
     order_id = place_order(
-        kite,
+        fyers,
         option_trade["option_symbol"],
         option_trade["trade_type"],
         option_trade["quantity"],

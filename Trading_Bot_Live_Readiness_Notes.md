@@ -13,7 +13,7 @@ The dashboard runtime switch is currently set to:
 - Fresh analysis interval: 15 seconds
 - Open trade monitoring interval: 1 second
 
-This means the bot is prepared to place real orders if the Kite session is active and all trade rules pass. Switch back to Paper from the dashboard if real orders should not be placed.
+This means the bot is prepared to place real orders if the Fyers session is active and all trade rules pass. Switch back to Paper from the dashboard if real orders should not be placed.
 
 ## What This Bot Does
 
@@ -237,7 +237,7 @@ Win/loss should be judged by final P/L:
 
 Before market:
 
-- Kite login/session is active
+- Fyers login/session is active
 - Dashboard shows LIVE_AUTO only if real orders are intended
 - Current fund is correct
 - No old open trade is stuck

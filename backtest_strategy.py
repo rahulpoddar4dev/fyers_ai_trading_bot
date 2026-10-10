@@ -4,16 +4,16 @@ from datetime import datetime, timedelta
 
 import config
 from indicators import enrich_candles
-from kite_login import login
+from fyers_login import login
 from market_data import _find_index_token
 from strategy import build_strategy_signal
 
 
-def run_backtest(kite, symbol: str = "NIFTY", days: int = 20) -> dict:
+def run_backtest(fyers, symbol: str = "NIFTY", days: int = 20) -> dict:
     to_date = datetime.now()
     from_date = to_date - timedelta(days=days)
-    candles = kite.historical_data(
-        instrument_token=_find_index_token(kite, symbol),
+    candles = fyers.historical_data(
+        instrument_token=_find_index_token(fyers, symbol),
         from_date=from_date,
         to_date=to_date,
         interval=config.CANDLE_INTERVAL,
@@ -92,10 +92,10 @@ def run_backtest(kite, symbol: str = "NIFTY", days: int = 20) -> dict:
 
 
 def main():
-    kite = login()
+    fyers = login()
     for symbol in config.ANALYZE_INDICES:
         try:
-            summary = run_backtest(kite, symbol=symbol)
+            summary = run_backtest(fyers, symbol=symbol)
         except Exception as error:
             print(f"{symbol} backtest failed: {error}")
             continue

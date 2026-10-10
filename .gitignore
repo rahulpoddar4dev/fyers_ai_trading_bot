@@ -1,7 +1,7 @@
 .env
 .DS_Store
 .venv/
-kite_session.json
+fyers_session.json
 open_trade.json
 account_status.json
 paper_account.json

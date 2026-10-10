@@ -6,15 +6,15 @@ from market_data import fetch_index_candles, fetch_index_market_data
 from strategy import build_strategy_signal
 
 
-def analyze_index(kite, symbol: str) -> dict:
-    market_data = fetch_index_market_data(kite, symbol)
-    candles = fetch_index_candles(kite, symbol)
+def analyze_index(fyers, symbol: str) -> dict:
+    market_data = fetch_index_market_data(fyers, symbol)
+    candles = fetch_index_candles(fyers, symbol)
     secondary_timeframes = {}
     if config.CANDLE_PATTERN_MULTI_TIMEFRAME_ENABLED:
         for interval in config.CANDLE_PATTERN_SECONDARY_INTERVALS:
             try:
                 secondary_timeframes[interval] = fetch_index_candles(
-                    kite,
+                    fyers,
                     symbol,
                     interval=interval,
                     lookback_days=config.CANDLE_PATTERN_SECONDARY_LOOKBACK_DAYS,
@@ -27,7 +27,7 @@ def analyze_index(kite, symbol: str) -> dict:
     if getattr(config, "HTF_TREND_FILTER_ENABLED", True):
         try:
             htf_candles = fetch_index_candles(
-                kite,
+                fyers,
                 symbol,
                 interval=getattr(config, "HTF_CANDLE_INTERVAL", "15minute"),
                 lookback_days=getattr(config, "HTF_LOOKBACK_DAYS", 5),

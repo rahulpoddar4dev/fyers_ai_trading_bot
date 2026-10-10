@@ -172,7 +172,7 @@ def _write_rows(path: Path, rows: list[dict], fields: list[str]) -> None:
         writer.writerows(rows)
 
 
-def _update_file_rows(path: Path, kite) -> None:
+def _update_file_rows(path: Path, fyers) -> None:
     rows = _read_rows(path)
     changed = False
     now = market_now_naive()
@@ -189,7 +189,7 @@ def _update_file_rows(path: Path, kite) -> None:
         minutes = (now - opened).total_seconds() / 60
         quote_key = f"NFO:{row.get('option_symbol')}"
         try:
-            quote = kite.quote([quote_key]).get(quote_key, {})
+            quote = fyers.quote([quote_key]).get(quote_key, {})
             current_price = _to_float(quote.get("last_price"))
         except Exception:
             current_price = 0
@@ -220,10 +220,10 @@ def _update_file_rows(path: Path, kite) -> None:
         _write_rows(path, rows, GHOST_FIELDS)
 
 
-def update_ghost_trades(kite) -> None:
+def update_ghost_trades(fyers) -> None:
     if not config.GHOST_TRADE_TRACKING_ENABLED:
         return
-    _update_file_rows(GHOST_FILE, kite)
+    _update_file_rows(GHOST_FILE, fyers)
     daily = DATEWISE_DIR / csv_date() / "ghost_trades.csv"
     if daily.exists():
-        _update_file_rows(daily, kite)
+        _update_file_rows(daily, fyers)

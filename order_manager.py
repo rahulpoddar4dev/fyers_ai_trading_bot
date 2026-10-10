@@ -1,4 +1,4 @@
-# order_manager.py - Place F&O orders on Zerodha
+# order_manager.py - Place F&O orders on Fyers
 
 import config
 
@@ -9,7 +9,7 @@ def round_to_tick(price: float, tick_size: float | None = None) -> float:
     return round(round(float(price) / tick_size) * tick_size, 2)
 
 
-def place_order(kite, symbol, action, quantity, exchange=None, order_type: str = "MARKET", price: float | None = None):
+def place_order(fyers, symbol, action, quantity, exchange=None, order_type: str = "MARKET", price: float | None = None):
     """
     Place a simple F&O order.
     action = "BUY" or "SELL"
@@ -24,12 +24,12 @@ def place_order(kite, symbol, action, quantity, exchange=None, order_type: str =
         normalized_order_type = (order_type or "MARKET").upper()
         order_kwargs = {
             "tradingsymbol": symbol,
-            "exchange": exchange or kite.EXCHANGE_NFO,
+            "exchange": exchange or fyers.EXCHANGE_NFO,
             "transaction_type": action,
             "quantity": quantity,
-            "order_type": kite.ORDER_TYPE_LIMIT if normalized_order_type == "LIMIT" else kite.ORDER_TYPE_MARKET,
-            "product": kite.PRODUCT_MIS,
-            "variety": kite.VARIETY_REGULAR,
+            "order_type": fyers.ORDER_TYPE_LIMIT if normalized_order_type == "LIMIT" else fyers.ORDER_TYPE_MARKET,
+            "product": fyers.PRODUCT_MIS,
+            "variety": fyers.VARIETY_REGULAR,
         }
 
         if normalized_order_type == "LIMIT":
@@ -37,7 +37,7 @@ def place_order(kite, symbol, action, quantity, exchange=None, order_type: str =
                 raise ValueError("LIMIT order needs a price.")
             order_kwargs["price"] = round_to_tick(price)
 
-        order_id = kite.place_order(**order_kwargs)
+        order_id = fyers.place_order(**order_kwargs)
 
         print(f"{normalized_order_type} order placed! Order ID: {order_id}")
         return order_id
@@ -47,12 +47,12 @@ def place_order(kite, symbol, action, quantity, exchange=None, order_type: str =
         return None
 
 
-def get_order_by_id(kite, order_id):
+def get_order_by_id(fyers, order_id):
     if not order_id:
         return None
 
     try:
-        for order in kite.orders():
+        for order in fyers.orders():
             if str(order.get("order_id")) == str(order_id):
                 return order
     except Exception as error:
@@ -61,15 +61,15 @@ def get_order_by_id(kite, order_id):
     return None
 
 
-def get_positions(kite):
+def get_positions(fyers):
     """Check current open positions"""
-    positions = kite.positions()
+    positions = fyers.positions()
     return positions['net']
 
 
-def get_balance(kite):
+def get_balance(fyers):
     """Check available margin/balance"""
-    margins = kite.margins()
+    margins = fyers.margins()
     available = margins['equity']['available']['live_balance']
     print(f"Available Balance: Rs {available}")
     return available

@@ -40,13 +40,13 @@ def _overall_bias(rows: list[dict]) -> str:
     return "FLAT"
 
 
-def analyze_pre_open_market(kite) -> dict:
+def analyze_pre_open_market(fyers) -> dict:
     rows = []
     errors = []
 
     for symbol in config.ANALYZE_INDICES:
         try:
-            data = fetch_index_market_data(kite, symbol)
+            data = fetch_index_market_data(fyers, symbol)
             previous_close = float(data.get("previous_close") or 0)
             last_price = float(data.get("last_price") or 0)
             open_price = float(data.get("open") or 0)

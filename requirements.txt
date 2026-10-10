@@ -1,6 +1,6 @@
 setuptools<70.0.0
 wheel
-kiteconnect
+fyers-apiv3
 pandas
 requests
 pytest

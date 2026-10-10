@@ -20,7 +20,7 @@ def now_datetime() -> datetime:
 def market_now_naive() -> datetime:
     """
     Returns current Indian Standard Time (Asia/Kolkata) as a naive datetime.
-    Guarantees correct IST timestamps when calling APIs like Kite Connect from cloud
+    Guarantees correct IST timestamps when calling APIs like Fyers API from cloud
     environments (e.g. Render, AWS, Docker containers) that default to UTC system time.
     """
     return now_datetime().replace(tzinfo=None)
